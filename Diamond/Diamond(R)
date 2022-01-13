@@ -1,0 +1,220 @@
+## import data
+#install.packages("tidyverse")
+#install.packages("ggplot2")
+setwd('/Users/wuyin')
+library(tidyverse)
+library(ggplot2)
+library(corrplot)
+library(car)
+devtools::install_github("tidyverse/ggplot2")
+df_diamond <- ggplot2::diamonds
+##independent variable changes to log_price
+g1 <- ggplot(df_diamond, aes(price)) + 
+  geom_histogram(bins = 20, aes(y = ..density..))
+g1
+
+g_lnprice <- ggplot(df_diamond, aes(log(price))) + 
+  geom_histogram(bins = 20, aes(y = ..density..)) +
+  geom_freqpoly(bins = 20) +
+  labs(title = "Distribution of log_price")
+g_lnprice
+
+ggplot(df_diamond, aes(price, after_stat(density), colour = cut)) +
+  geom_freqpoly(binwidth = 500)
+
+summary(diamonds$color)
+
+##divide diamonds into two categories, one is that carat is smaller than 1, 
+##the other one is that carat is bigger than 1. 
+plot(df_diamond$carat, df_diamond$price)
+## delete outliers
+plot(df_diamond$x, df_diamond$price)
+plot(df_diamond$y, df_diamond$price) ## filter y>30
+plot(df_diamond$z, df_diamond$price) ## filter z>30
+plot(df_diamond$table, df_diamond$price) ## filter table>90
+
+
+## data
+df_diamond <- df_diamond %>%
+  filter(y <= 30 & z <= 30 & table <= 90) %>%
+  mutate(if_bigger = ifelse(carat>1, 1, 0), 
+         log_price = log(price))
+g2 <- ggplot(df_diamond, aes(log_price)) + 
+  geom_histogram(bins = 20, aes(y = ..density..))
+g2
+
+g_carat <- ggplot(df_diamond, aes(carat)) + 
+  geom_histogram(bins = 20, aes(y = ..density..))
+
+## split the dataset
+diamond_big <- df_diamond %>%
+  filter(if_bigger==1) %>%
+  select(-price,-x,-y,-z,-if_bigger)
+diamond_small <- df_diamond %>%
+  filter(if_bigger==0) %>%
+  select(-price,-x,-y,-z,-if_bigger)
+
+g_smallprice <- ggplot(diamond_small, aes(log_price)) + 
+  geom_histogram(bins = 30, aes(y = ..density..)) +
+  labs(title = "Density: Price of smaller diamonds")
+g_smallprice
+
+g_bigprice <- ggplot(diamond_big, aes(log_price)) + 
+  geom_histogram(bins = 30, aes(y = ..density..))  +
+  labs(title = "Density: Price of larger diamonds")
+g_bigprice
+
+# correlation
+diamond_num <- df_diamond %>%
+  select(price, carat,depth,table,x,y,z)
+corr_diamond <- cor(diamond_num)
+corrplot(corr_diamond, method = "color",
+         addCoef.col = "gray",
+         tl.cex = 0.8,
+         tl.col = "black")
+#car::scatterplotMatrix(diamond_num, spread=FALSE, smoother.args=list(lty=2), main="Scatter Plot Matrix")
+
+plot(df_diamond$carat, df_diamond$price, type = "p",col = "grey",lwd = 1,
+     xlab = "Carat",
+     ylab = "Price")
+abline(v=1)
+
+g_box_cut <- ggplot(data = df_diamond, aes(x = cut, y = price)) +
+  geom_boxplot() +
+  facet_grid(cols = vars(if_bigger)) +
+  labs(x = "Cut", y="Price")
+g_box_cut
+
+g_box_color <- ggplot(data = df_diamond, aes(x = color, y = price)) +
+  geom_boxplot() +
+  facet_grid(cols = vars(if_bigger)) +
+  labs(x = "Color", y="Price")
+g_box_color
+
+g_box_clarity <- ggplot(data = df_diamond, aes(x = clarity, y = price)) +
+  geom_boxplot() +
+  facet_grid(cols = vars(if_bigger)) +
+  labs(x = "Clarity", y="Price")
+g_box_clarity
+
+
+### modeling
+library(olsrr)
+
+fit_all_big <- lm(log_price~., data = diamond_big)
+summary(fit_all_big)
+
+fit_all_small <- lm(log_price~., data = diamond_small)
+summary(fit_all_small)
+
+## choose a better model
+
+train_sub_big <-  sample(nrow(diamond_big),8/10*nrow(diamond_big))
+train_big <-  diamond_big[train_sub_big,]
+test_big <-  diamond_big[-train_sub_big,]
+
+train_sub_small <-  sample(nrow(diamond_small),8/10*nrow(diamond_small))
+train_small <-  diamond_small[train_sub_small,]
+test_small <-  diamond_small[-train_sub_small,]
+
+# stepwise selection
+step_fit_big <- lm(log_price ~ ., data = train_big)
+summary(step_fit_big)
+step_aic_forward_big <- ols_step_forward_aic(step_fit_big, details = TRUE)
+step_aic_forward_big
+plot(step_fit_big)
+
+step_fit_small <- lm(log_price ~ ., data = train_small)
+summary(step_fit_small)
+step_aic_forward_small <- ols_step_forward_aic(step_fit_small, details = TRUE)
+step_aic_forward_small
+#plot(step_fit_small)
+
+
+## poly
+train_big2 <- train_big %>%
+  mutate(carat2 = carat^2)
+step_fit_big2 <- lm(log_price ~., data = train_big2)
+summary(step_fit_big2)
+step_aic_forward_big2 <- ols_step_forward_aic(step_fit_big2, details = TRUE)
+step_aic_forward_big2
+#plot(step_fit_big2)
+
+
+train_small2 <- train_small %>%
+  mutate(carat2 = carat^2)
+step_fit_small2 <- lm(log_price ~., data = train_small2)
+summary(step_fit_small2)
+step_aic_forward_small2 <- ols_step_forward_aic(step_fit_small2, details = TRUE)
+step_aic_forward_small2
+#plot(step_fit_small2)
+
+## use test dataset to predict
+test_small2 <- test_small %>%
+  mutate(carat2 = carat^2)
+test_big2 <- test_big %>%
+  mutate(carat2 = carat^2)
+
+prediction_test_big <- predict(step_fit_big2, newdata = test_big2)
+error_test_big <- test_big2$log_price - prediction_test_big
+plot(x = test_big2$log_price, y = prediction_test_big,
+     main = "Test Fit of Big diamonds",
+     lwd = 0.5,
+     type = "p",
+     cex = 0.5,
+     xlab = "log_price",
+     ylab = "Prediction")
+abline(a=0, b = 1,col = "red")
+plot(x = prediction_test_big, y = error_test_big,
+     main = "Error of Prediction",
+     lwd = 0.5,
+     type = "p",
+     cex = 0.5,
+     xlab = "Prediction",
+     ylab = "Error")
+abline(h = 0,col = "red")
+ssto_big = sum((test_big2$log_price - mean(test_big2$log_price))^2)
+ssto_big
+sse_big = sum(error_test_big^2)
+sse_big
+ssp_big = sum((prediction_test_big - mean(test_big2$log_price))^2)
+ssp_big
+ssp_big+sse_big
+ssp_big/ssto_big
+
+prediction_test_small <- predict(step_fit_small2, newdata = test_small2)
+error_test_small <- test_small2$log_price - prediction_test_small
+plot(x = test_small2$log_price, y = prediction_test_small,
+     main = "Test Fit of Small diamonds",
+     lwd = 0.5,
+     type = "p",
+     cex = 0.5,
+     xlab = "log_price",
+     ylab = "Prediction")
+abline(a=0, b = 1,col = "red")
+plot(x = prediction_test_small, y = error_test_small,
+     main = "Error of Prediction",
+     lwd = 0.5,
+     type = "p",
+     cex = 0.5,
+     xlab = "Prediction",
+     ylab = "Error")
+abline(h = 0,col = "red")
+ssto_small = sum((test_small2$log_price - mean(test_small2$log_price))^2)
+ssto_small
+sse_small = sum(error_test_small^2)
+sse_small
+ssp_small = sum((prediction_test_small - mean(test_small2$log_price))^2)
+ssp_small
+ssp_small+sse_small
+ssp_small/ssto_small
+
+
+## need to assign a best model from above analysis
+best_fit_big <- fit_all_big  ### 【need to choose】
+best_fit_small <- fit_all_small
+
+## residuals
+plot(fit_all_big$fitted.values, fit_all_big$residuals)
+
+
