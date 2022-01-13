@@ -2,6 +2,7 @@
 Projects implementing Linear Regression
 
 1.Diamond
+
 使用R语言分析钻石各属性如何影响钻石价格，并搭建钻石价格预测模型;
 
 通过可视化（直方图、箱线图、散点图）进行数据的探索、调整、异常观测、划分以及量化处理;
